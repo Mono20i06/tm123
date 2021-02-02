@@ -11,8 +11,8 @@ include ./Makefile.in.mk
 # [  TARGETS  ]
 # override to whatever works on your system
 
-APPLICATION := main.asgi:application
-ENTRYPOINT := $(PYTHON) $(DIR_SRC)/main/app.py
+WSGI_APPLICATION := main.wsgi:application
+LOCAL_RUN := $(PYTHON) -m main.app
 
 include ./Makefile.targets.mk
 

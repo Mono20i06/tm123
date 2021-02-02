@@ -1,62 +1,28 @@
 .PHONY: run
 run:
-	$(call log, starting application)
-	$(ENTRYPOINT)
-
-
-.PHONY: run-dev
-run-dev:
-	$(call log, starting development web server)
-	$(RUN) uvicorn \
-		--host 0.0.0.0 \
-		--lifespan off \
-		--log-level debug \
-		--port 8000 \
-		--reload \
-		--workers 1 \
-		--ws none \
-		$(APPLICATION)
+	$(call log, starting local web server)
+	$(LOCAL_RUN)
 
 
 .PHONY: run-prod
 run-prod:
-	$(call log, starting production web server)
-	$(RUN) gunicorn --config="$(DIR_CONFIG)/gunicorn.conf.py" $(APPLICATION)
+	$(call log, starting local web server)
+	$(RUN) gunicorn --config="$(DIR_SCRIPTS)/gunicorn.conf.py" $(WSGI_APPLICATION)
 
 
 .PHONY: format
 format:
 	$(call log, reorganizing imports & formatting code)
-	$(RUN) isort --virtual-env="$(DIR_VENV)" \
-		"$(DIR_SRC)" \
-		"$(DIR_TESTS)" \
-		"$(DIR_SCRIPTS)" \
-		"$(DIR_CONFIG)" \
-		|| exit 1
-	$(RUN) black \
-		"$(DIR_SRC)" \
-		"$(DIR_TESTS)" \
-		"$(DIR_SCRIPTS)" \
-		"$(DIR_CONFIG)" \
-		|| exit 1
+	$(RUN) isort --virtual-env="$(DIR_VENV)" "$(DIR_SRC)" "$(DIR_TESTS)"
+	$(RUN) black "$(DIR_SRC)" "$(DIR_TESTS)"
 
 
 .PHONY: test
 test:
 	$(call log, running tests)
 	$(RUN) pytest
-	$(RUN) isort --virtual-env="$(DIR_VENV)" --check-only \
-		"$(DIR_SRC)" \
-		"$(DIR_TESTS)" \
-		"$(DIR_SCRIPTS)" \
-		"$(DIR_CONFIG)" \
-		|| exit 1
-	$(RUN) black --check \
-		"$(DIR_SRC)" \
-		"$(DIR_TESTS)" \
-		"$(DIR_SCRIPTS)" \
-		"$(DIR_CONFIG)" \
-		|| exit 1
+	$(RUN) isort --virtual-env="$(DIR_VENV)" --check-only "$(DIR_SRC)" "$(DIR_TESTS)"
+	$(RUN) black --check "$(DIR_SRC)" "$(DIR_TESTS)"
 
 
 .PHONY: release
@@ -70,40 +36,41 @@ sh:
 	$(RUN) ipython
 
 
-.PHONY: venv-dir
-venv-dir:
-	$(call log, initializing venv directory)
-	test -d .venv || mkdir .venv
-
-
 .PHONY: venv
-venv: venv-dir
+venv:
 	$(call log, installing packages)
+	test -d .venv || mkdir .venv
 	$(PIPENV_INSTALL)
 
 
 .PHONY: venv-dev
-venv-dev: venv-dir
+venv-dev:
 	$(call log, installing development packages)
 	$(PIPENV_INSTALL) --dev
 
 
 .PHONY: venv-prod
-venv-prod: venv-dir
+venv-prod:
 	$(call log, installing development packages for production)
 	$(PIPENV_INSTALL) --deploy
 
 
 .PHONY: upgrade-venv
-upgrade-venv: venv-dir
+upgrade-venv:
 	$(call log, upgrading all packages in virtualenv)
-	$(MANAGEMENT) upgrade-packages
+	$(PYTHON) $(DIR_SCRIPTS)/upgrade_packages.py
+
+
+.PHONY: pycharm
+pycharm:
+	$(call log, setting PyCharm up)
+	$(PYTHON) $(DIR_SCRIPTS)/setup_pycharm.py
 
 
 .PHONY: heroku
 heroku:
 	$(call log, configuring the Heroku instance)
-	$(MANAGEMENT) heroku --configure
+	$(PYTHON) $(DIR_SCRIPTS)/configure_heroku.py
 
 
 .PHONY: db
@@ -115,9 +82,8 @@ db: migrate
 wait-for-db:
 	$(call log, waiting for DB up)
 	$(DIR_SCRIPTS)/wait_for_postgresql.sh \
-		$(shell $(MANAGEMENT) db-config --host) \
-		$(shell $(MANAGEMENT) db-config --port) \
-		|| exit 1
+		$(shell $(PYTHON) $(DIR_SCRIPTS)/get_db_host.py) \
+		$(shell $(PYTHON) $(DIR_SCRIPTS)/get_db_port.py) \
 
 
 .PHONY: initdb
@@ -133,27 +99,25 @@ resetdb:  dropdb createdb
 .PHONY: dropdb
 dropdb:
 	$(call log, dropping the DB)
-	dropdb \
-		--echo \
-		--host=$(shell $(MANAGEMENT) db-config --host) \
-		--if-exists \
+	psql \
+		--echo-all \
+		--username=$(shell $(PYTHON) $(DIR_SCRIPTS)/get_db_user.py) \
 		--no-password \
-		--port=$(shell $(MANAGEMENT) db-config --port) \
-		--username=$(shell $(MANAGEMENT) db-config --username) \
-		$(shell $(MANAGEMENT) db-config --db-name)
+		--host=localhost \
+		--dbname=postgres \
+		--command="DROP DATABASE IF EXISTS \"$(shell $(PYTHON) $(DIR_SCRIPTS)/get_db_name.py)\";"
 
 
 .PHONY: createdb
 createdb:
 	$(call log, creating the DB)
-	createdb \
-		--echo \
-		--host=$(shell $(MANAGEMENT) db-config --host) \
+	psql \
+		--echo-all \
+		--username=$(shell $(PYTHON) $(DIR_SCRIPTS)/get_db_user.py) \
 		--no-password \
-		--owner=$(shell $(MANAGEMENT) db-config --username) \
-		--port=$(shell $(MANAGEMENT) db-config --port) \
-		--username=$(shell $(MANAGEMENT) db-config --username)\
-		$(shell $(MANAGEMENT) db-config --db-name)
+		--host=localhost \
+		--dbname=postgres \
+		--command="CREATE DATABASE \"$(shell $(PYTHON) $(DIR_SCRIPTS)/get_db_name.py)\";"
 
 
 .PHONY: migrations
